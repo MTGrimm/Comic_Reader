@@ -1,5 +1,4 @@
 # Hidden Browser with selenium to nav webpage with the custom gui
-from re import S
 from tokenize import group
 from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
