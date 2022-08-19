@@ -9,7 +9,7 @@ import sys
 from PyQt5.QtCore import QUrl, Qt, QSize
 from PyQt5.QtWidgets import QStackedWidget, QMainWindow, QApplication, QLabel, QPushButton, QGridLayout, QVBoxLayout, QWidget, QLineEdit, QListWidget, QHBoxLayout, QScrollArea, QToolBar, QAction
 from PyQt5.QtWebEngineWidgets import *
-from PyQt5.QtGui import QIcon, QKeySequence, QFont, QImage, QPixmap
+from PyQt5.QtGui import QKeySequence, QFont, QImage, QPixmap
 from adblockparser import AdblockRules
 from PyQt5.QtWebEngineCore import *
 from PyQt5.uic import loadUi
