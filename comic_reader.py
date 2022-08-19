@@ -16,6 +16,11 @@ import requests
 
 abs_path = os.path.dirname(__file__)
 
+def last_opened(rel_path):
+    with open(abs_path + "/" + rel_path, "r") as file:
+        url = file.read()
+        return url
+    
 driver = webdriver.Firefox(service=Service(abs_path + "\geckodriver.exe"))
 driver.get("https://readcomiconline.li")
 
@@ -139,13 +144,18 @@ class MainWindow(QMainWindow):
         
         self.display_comic(images)
         
-    def display_comic(self, imageLinks):
-        print("hewo")
-        self.window = QMainWindow()
-        self.window.setBaseSize(800, 1800)
-        self.navBar = QToolBar("Nav")
+    def display_comic(self, imageLinks):   
+        self.readingList = QWebEngineView()
+        self.readingList.setUrl(QUrl(last_opened("lasturl2.txt")))
+        
+        self.stacked = QStackedWidget()
+        
+        self.popup = QMainWindow()
+        self.popup.setWindowFlag(Qt.FramelessWindowHint)
+        self.popup.setMinimumSize(1200, 1800)
+        self.navBar = QToolBar("Navigator")
         self.navBar.setIconSize(QSize(0, 0))
-        self.navBar.setFixedWidth(0)
+        self.navBar.setFixedWidth(0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
         self.navBar.setFixedHeight(0)
 
         back = QAction("back", self)
@@ -163,22 +173,31 @@ class MainWindow(QMainWindow):
         close.setShortcut(QKeySequence("Ctrl+W"))
         self.navBar.addAction(close)
         
+        switch = QAction("switch", self)
+        switch.triggered.connect(self.switch_windows)
+        switch.setShortcut(QKeySequence("Ctrl+D"))
+        self.navBar.addAction(switch)
+        
+        home_btn = QAction("home", self)
+        home_btn.triggered.connect(self.go_home)
+        home_btn.setShortcut(QKeySequence("Ctrl+E"))
+        self.navBar.addAction(home_btn)
         
         self.widget = QWidget()
         self.scrollArea = QScrollArea()
         self.readerWidget = QWidget()
-        self.window.setCentralWidget(self.readerWidget)
+        self.popup.setCentralWidget(self.readerWidget)
         self.readerWidget.setLayout(QVBoxLayout())
         self.readerWidget.layout().addWidget(self.navBar)
-        self.readerWidget.layout().addWidget(self.scrollArea)
+        self.readerWidget.layout().addWidget(self.stacked)
+        self.stacked.addWidget(self.scrollArea)
+        self.stacked.addWidget(self.readingList)
         self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.scrollArea.setWidgetResizable(True)
         self.scrollArea.setWidget(self.widget)
         self.widget.setLayout(QVBoxLayout())
-        self.window.setWindowFlag(Qt.FramelessWindowHint)
-        self.window.setMinimumSize(1200, 1800)
 
-        self.window.show()
+        self.popup.show()
         self.setVisible(False)
         images = []
         for link in imageLinks:
@@ -189,23 +208,41 @@ class MainWindow(QMainWindow):
             img1.setPixmap(QPixmap(image))
             self.widget.layout().addWidget(img1)
             
+    def switch_windows(self):
+        if self.stacked.currentIndex() == 0:
+            self.stacked.setCurrentIndex(1)
+        else:
+            self.stacked.setCurrentIndex(0)
+            
     def go_back(self):
-        back_url = driver.find_element(By.XPATH, "//*[@id='containerRoot']/div[4]/div[1]/div/a[1]").get_attribute("href")
-        driver.get(back_url + "&readType=1")
-        self.window.close()
-        self.get_images()
+        if self.stacked.currentIndex() == 0:
+            back_url = driver.find_element(By.XPATH, "//*[@id='containerRoot']/div[4]/div[1]/div/a[1]").get_attribute("href")
+            driver.get(back_url + "&readType=1")
+            self.popup.close()
+            self.get_images()
+        else:
+            self.readingList.back()
         
     def go_forward(self):
-        forward_url = driver.find_element(By.XPATH, "//*[@id='containerRoot']/div[4]/div[1]/div/a[2]").get_attribute("href")
-        driver.get(forward_url + "&readType=1")
-        self.window.close()
-        self.get_images()
+        if self.stacked.currentIndex() == 0:
+            forward_url = driver.find_element(By.XPATH, "//*[@id='containerRoot']/div[4]/div[1]/div/a[2]").get_attribute("href")
+            driver.get(forward_url + "&readType=1")
+            self.popup.close()
+            self.get_images()
+        else:
+            self.readingList.forward()
         
     def close_everything(self):
         driver.quit()
-        self.window.close()
+        self.popup.close()
         self.close()
         
+    def go_home(self):
+        if self.stacked.currentIndex() == 0:
+            pass
+        else:
+            self.readingList.setUrl(QUrl("https://marvelguides.com/comics-introduction"))
+            
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     QApplication.setApplicationName("Reader")
