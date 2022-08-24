@@ -1,29 +1,111 @@
 # Hidden Browser with selenium to nav webpage with the custom gui
+from asyncio import Future
+from genericpath import isfile
+from multiprocessing.dummy import Pool
+import shutil
+from concurrent import futures
+from concurrent.futures import ProcessPoolExecutor, process
+from logging import exception
 from tokenize import group
+from turtle import forward
 from selenium import webdriver
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys 
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 import os
 import sys
-from PyQt5.QtCore import QUrl, Qt, QSize
-from PyQt5.QtWidgets import QStackedWidget, QMainWindow, QApplication, QLabel, QPushButton, QGridLayout, QVBoxLayout, QWidget, QLineEdit, QListWidget, QHBoxLayout, QScrollArea, QToolBar, QAction
+from PyQt5.QtCore import QUrl, Qt, QSize, QDataStream, QByteArray, QIODevice, QThread, pyqtSignal, QObject
+from PyQt5.QtWidgets import QStackedWidget, QMainWindow, QApplication, QLabel, QPushButton, QGridLayout, QVBoxLayout, QWidget, QLineEdit, QListWidget, QHBoxLayout, QScrollArea, QToolBar, QAction, QProgressDialog
 from PyQt5.QtWebEngineWidgets import *
-from PyQt5.QtGui import QKeySequence, QFont, QImage, QPixmap
+from PyQt5.QtGui import QKeySequence, QFont, QImage, QPixmap, QGuiApplication
 from adblockparser import AdblockRules
 from PyQt5.QtWebEngineCore import *
 from PyQt5.uic import loadUi
 import requests
+from multiprocessing import Process, Pool
+import time
+from bs4 import BeautifulSoup
 
-abs_path = os.path.dirname(__file__)
+if __name__ == "__main__":
+    abs_path = os.path.dirname(__file__)
+    print("owo")
+    option = Options()
+    option.headless = False
+    driver = webdriver.Firefox(options=option, service=Service(abs_path + "\geckodriver.exe"))
+    driver.install_addon(r"Python/Comic Reader/adblock.xpi", temporary=True)
+
+    driver.get("https://comiconlinefree.net/")
 
 def last_opened(rel_path):
-    with open(abs_path + "/" + rel_path, "r") as file:
+    with open(abs_path + "/" + rel_path, "r") as file:#
         url = file.read()
-        return url
+        return url  
     
-driver = webdriver.Firefox(service=Service(abs_path + "\geckodriver.exe"))
-driver.get("https://readcomiconline.li")
+def custom_get(driver, url):
+    driver.get(url)
+    
+def preload2(forward_url, update_image):
+    print("made it to preload2")
+    soup = BeautifulSoup(requests.get(forward_url).content, "html.parser")
+    imgs = soup.find_all("img", {"class" : "lazyload chapter_img"})
+    image_links = []
+    for img in imgs:
+        image_links.append(img.get("data-original"))
+        
+    for link in image_links:
+        image = QImage()
+        image.loadFromData(requests.get(link).content)
+        image = image.scaled(int(image.width()*1.15), int(image.height()*1.15))
+        update_image(QPixmap(image))    
+    
+def preload(forward_url):
+    soup = BeautifulSoup(requests.get(forward_url).content, "html.parser")
+    imgs = soup.find_all("img", {"class" : "lazyload chapter_img"})
+    image_links = []
+    for img in imgs:
+        image_links.append(img.get("data-original"))
+    
+    state = []
+    for i, link in enumerate(image_links):
+        print("owo")
+        qByte = QByteArray()
+        stream = QDataStream(qByte, QIODevice.WriteOnly)
+        image = QImage()
+        image.loadFromData(requests.get(link).content)
+        image = image.scaled(int(image.width()*1.15), int(image.height()*1.15))
+        stream << image
+        state.append((i, qByte))
+    return state
 
+
+def forward(forward_url):
+    driver.get(forward_url)
+    forward_url = driver.find_element(By.CLASS_NAME, "nav.next").get_attribute("href")
+    p = Process(target=preload,args=(forward_url, ))
+    p.start()
+    p.join()
+    
+    
+class Worker(QObject):
+    finished = pyqtSignal()
+    progress = pyqtSignal(QPixmap)
+    def __init__(self, forward_url):
+        super(Worker, self).__init__()
+        self.forward_url = forward_url
+    
+    def run(self):
+        print("made it to run")
+        preload2(self.forward_url, self.update_image)
+        self.finished.emit()
+        
+    def update_image(self, pix):
+        self.progress.emit(pix)
+    
+    
 class MainWindow(QMainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
@@ -65,82 +147,66 @@ class MainWindow(QMainWindow):
         self.issueWidget.setLayout(QHBoxLayout())
         self.issueWidget.layout().addWidget(self.issueList)
         self.issueWidget.layout().addWidget(self.issueEnter)
+        
+        self.preload_data = []
 
         # Main Window
         self.setMinimumSize(800, 500)
         self.show()
         
     def search_comic(self):
-        searchBar = driver.find_element(By.ID, "keyword")
+        searchBar = driver.find_element(By.ID, "autocomplete")
         searchBar.send_keys(self.search.text())
-        searchButton = driver.find_element(By.ID, "imgSearch")
-        searchButton.click()
         self.get_comics()
         
     def get_comics(self):
-        i = 1
+        self.comicList.clear()
         try:
-            while True:
-                title = driver.find_element(By.XPATH, f"/html/body/div[1]/div[4]/div[1]/div/div[2]/div/div[5]/div[{i}]").get_attribute("title").split(">", 1)[1].split("<", 1)[0]
-                self.comicList.addItem(title)
-                i += 1
-        except:
-            pass
+            WebDriverWait(driver, 10).until(
+                    EC.visibility_of_element_located((By.CLASS_NAME, "search-result")))
+        except TimeoutException as e:
+            print(e)
+            
+        items = driver.find_elements(By.CLASS_NAME, "item")
+        for item in items:
+            if item.find_element(By.XPATH, "./..").tag_name != "p":
+                self.comicList.addItem(item.text)
     
     def go_to_comic(self):
-        chosen = self.comicList.currentItem().text()
+        chosen_name = self.comicList.currentItem().text()
         i = 1
-        try:
-            while True:
-                title = driver.find_element(By.XPATH, f"/html/body/div[1]/div[4]/div[1]/div/div[2]/div/div[5]/div[{i}]").get_attribute("title").split(">", 1)[1].split("<", 1)[0]
-                if title == chosen:
-                    break
-                i += 1
-        except:
-            pass
+        chosen = driver.find_element(By.XPATH, f"//a[normalize-space()='{chosen_name}']")
         
-        url = driver.find_element(By.XPATH, f"/html/body/div[1]/div[4]/div[1]/div/div[2]/div/div[5]/div[{i}]/a").get_attribute("href")
+        url = chosen.get_attribute("href")
         driver.get(url)
         
         self.get_issues()
         
     def get_issues(self):
-        i = 3
-        try:
-            while True:
-                title = driver.find_element(By.XPATH, f"//*[@id='leftside']/div[3]/div[2]/div/table/tbody/tr[{i}]/td[1]/a").get_attribute("title").replace(" comic online in high quality", "")
-                self.issueList.addItem(title)
-                i += 1
-        except:
-            pass
+        self.issueList.clear()
+        issue_elements = driver.find_elements(By.CLASS_NAME, "ch-name")
+        for issue in issue_elements:
+            self.issueList.addItem(issue.text)
         
     def go_to_issue(self):
-        i = 3
-        chosen = self.issueList.currentItem().text()
-        try:
-            while True:
-                title = driver.find_element(By.XPATH, f"//*[@id='leftside']/div[3]/div[2]/div/table/tbody/tr[{i}]/td[1]/a").get_attribute("title").replace(" comic online in high quality", "")
-                if chosen == title:
-                    break
-                i += 1
-        except:
-            pass
+        chosen_name = self.issueList.currentItem().text()
+        chosen = driver.find_element(By.XPATH, f"//a[normalize-space()='{chosen_name}']")
     
-        url = driver.find_element(By.XPATH, f"//*[@id='leftside']/div[3]/div[2]/div/table/tbody/tr[{i}]/td[1]/a").get_attribute("href")
-        driver.get(url + "&readType=1")
+        url = chosen.get_attribute("href")
+        
+        if url[-5:-1] + url[-1] != "/full":
+            url = url + "/full"
+        driver.get(url)
         
         self.get_images()
         
     def get_images(self):
         images = []
-        i = 1
-        try:
-            while True:
-                image = driver.find_element(By.XPATH, f"//*[@id='divImage']/p[{i}]/img").get_attribute("src")
-                images.append(image)
-                i += 1
-        except:
-            pass
+        url = driver.current_url
+        soup = BeautifulSoup(requests.get(url).content, "html.parser")
+        imgs = soup.find_all("img", {"class" : "lazyload chapter_img"})
+        for img in imgs:
+            images.append(img.get("data-original"))
         
         self.display_comic(images)
         
@@ -183,6 +249,11 @@ class MainWindow(QMainWindow):
         home_btn.setShortcut(QKeySequence("Ctrl+E"))
         self.navBar.addAction(home_btn)
         
+        switch_btn = QAction("switch", self)
+        switch_btn.triggered.connect(self.switch_back)
+        switch_btn.setShortcut(QKeySequence("Ctrl+F"))
+        self.navBar.addAction(switch_btn)
+        
         self.widget = QWidget()
         self.scrollArea = QScrollArea()
         self.readerWidget = QWidget()
@@ -199,39 +270,137 @@ class MainWindow(QMainWindow):
 
         self.popup.show()
         self.setVisible(False)
-        images = []
+        self.images = []
+        forward_url = driver.find_element(By.CLASS_NAME, "nav.next").get_attribute("href")
+        print("owoowow", forward_url)
+        self.preload_data = []
+        self.thread = QThread()
+        self.worker = Worker(forward_url)
+        self.worker.moveToThread(self.thread)
+        
+        self.thread.started.connect(self.worker.run)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.worker.finished.connect(self.thread.deleteLater)
+        self.worker.progress.connect(self.update_preload)
+        
+        self.thread.start()
+        
         for link in imageLinks:
             image = QImage()
+            start_time = time.perf_counter()
             image.loadFromData(requests.get(link).content)
+            end_time = time.perf_counter()
+            print(f"time taken to loadfromdata = {end_time - start_time}")
             image = image.scaled(int(image.width()*1.15), int(image.height()*1.15))
             img1 = QLabel()
+            start_time = time.perf_counter()
             img1.setPixmap(QPixmap(image))
+            end_time = time.perf_counter()
+            print(f"time taken to setPixmap = {end_time - start_time}")
+            self.images.append(img1)
             self.widget.layout().addWidget(img1)
+    
+    def preload(self, forward_url):
+        preload_driver = webdriver.Firefox(service=Service(abs_path + "\\temp_images\geckodriver copy.exe"))
+        preload_driver.install_addon(r"Python/Comic Reader/adblock.xpi", temporary=True)
+        print(forward_url)
+        preload_driver.get(forward_url)
+        
+        images = []
+        i = 1
+        try:
+            while True:
+                image = driver.find_element(By.XPATH, f"//*[@id='divImage']/p[{i}]/img").get_attribute("src")
+                images.append(image)
+                i += 1
+        except Exception as e:
+            print(e)
             
+        preload_driver.quit()
+        preload_data = []
+        for i, img in enumerate(images):
+            response = requests.get(img, stream=True)
+            with open(f'img{i}.png', 'wb') as out_file:
+                shutil.copyfileobj(response.raw, out_file)
+            del response
+        
+        
+    
+    def switch_back(self):
+        self.popup.close()
+        driver.get(driver.current_url.rsplit("/", 2)[0])
+        self.setVisible(True)
+        
+    def bring_up_last(self):
+        with open("lasturl.txt", "r") as file:
+            link = file.read()
+            
+        driver.get(link)
+    
     def switch_windows(self):
         if self.stacked.currentIndex() == 0:
             self.stacked.setCurrentIndex(1)
         else:
             self.stacked.setCurrentIndex(0)
-            
+    
     def go_back(self):
         if self.stacked.currentIndex() == 0:
-            back_url = driver.find_element(By.XPATH, "//*[@id='containerRoot']/div[4]/div[1]/div/a[1]").get_attribute("href")
-            driver.get(back_url + "&readType=1")
+            back_url = driver.find_element(By.CLASS_NAME, "nav.prev").get_attribute("href")
+            driver.get(back_url)
             self.popup.close()
             self.get_images()
         else:
             self.readingList.back()
         
+    def drive_forward(self, forward_url):
+        driver.get(forward_url)
+
+        
     def go_forward(self):
-        if self.stacked.currentIndex() == 0:
-            forward_url = driver.find_element(By.XPATH, "//*[@id='containerRoot']/div[4]/div[1]/div/a[2]").get_attribute("href")
-            driver.get(forward_url + "&readType=1")
-            self.popup.close()
-            self.get_images()
+        if self.stacked.currentIndex() == 0:            
+            #print("owo " + forward_url)
+            #new_image_data = self.preload_data
+            #print("newimg", new_image_data)
+            
+            #with ProcessPoolExecutor() as executor:
+            #    f = executor.submit(self.drive_forward, forward_url)
+            
+            imgs = []
+            forward_url = driver.find_element(By.CLASS_NAME, "nav.next").get_attribute("href")
+            
+            for image in self.images:
+                image.deleteLater()
+                
+            self.images = []
+            
+            for data in self.preload_data:
+                img1 = QLabel()
+                img1.setPixmap(data)
+                self.images.append(img1)
+                self.widget.layout().addWidget(img1)
+                
+            self.preload_data = []
+            self.thread = QThread()
+            self.worker = Worker(forward_url)
+            self.worker.moveToThread(self.thread)
+            
+            self.thread.started.connect(self.worker.run)
+            self.worker.finished.connect(self.thread.quit)
+            self.worker.finished.connect(self.worker.deleteLater)
+            print("before thread deletes")
+            self.worker.finished.connect(self.thread.deleteLater)
+
+            self.worker.progress.connect(self.update_preload)
+            
+            self.thread.start()
+            driver.get(forward_url)
         else:
             self.readingList.forward()
-        
+    
+    def update_preload(self, pix):
+        self.preload_data.append(pix)
+    
     def close_everything(self):
         driver.quit()
         self.popup.close()
@@ -239,7 +408,18 @@ class MainWindow(QMainWindow):
         
     def go_home(self):
         if self.stacked.currentIndex() == 0:
-            pass
+            for image in self.images:
+                image.deleteLater()
+            
+            self.images = []
+            for data in self.preload_data:
+                label = QImage()
+                label.loadFromData(data)
+                label = label.scaled(int(label.width()*1.15), int(label.height()*1.15))
+                img = QLabel()
+                img.setPixmap(QPixmap(label))
+                self.images.append(img)
+                self.widget.layout().addWidget(img)
         else:
             self.readingList.setUrl(QUrl("https://marvelguides.com/comics-introduction"))
             
