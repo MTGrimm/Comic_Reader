@@ -93,12 +93,14 @@ def forward(forward_url):
 class Worker(QObject):
     finished = pyqtSignal()
     progress = pyqtSignal(QPixmap)
-    def __init__(self, forward_url):
+    def __init__(self, forward_url, driver):
         super(Worker, self).__init__()
         self.forward_url = forward_url
+        self.driver = driver
     
     def run(self):
         print("made it to run")
+        self.driver.get(self.forward_url)
         preload2(self.forward_url, self.update_image)
         self.finished.emit()
         
@@ -275,13 +277,13 @@ class MainWindow(QMainWindow):
         print("owoowow", forward_url)
         self.preload_data = []
         self.thread = QThread()
-        self.worker = Worker(forward_url)
+        self.worker = Worker(forward_url, driver)
         self.worker.moveToThread(self.thread)
         
         self.thread.started.connect(self.worker.run)
-        self.worker.finished.connect(self.thread.quit)
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.finished.connect(self.thread.deleteLater)
+        self.worker.finished.connect(self.fixThread)
+        #self.worker.finished.connect(self.worker.deleteLater)
+        #self.worker.finished.connect(self.thread.deleteLater)
         self.worker.progress.connect(self.update_preload)
         
         self.thread.start()
@@ -300,6 +302,15 @@ class MainWindow(QMainWindow):
             print(f"time taken to setPixmap = {end_time - start_time}")
             self.images.append(img1)
             self.widget.layout().addWidget(img1)
+    
+    def fixThread(self):
+        self.thread.quit()
+        self.worker.deleteLater()
+        while True:
+            if not self.thread.isRunning():
+                print("deleting thread")
+                self.thread.deleteLater()
+                break
     
     def preload(self, forward_url):
         preload_driver = webdriver.Firefox(service=Service(abs_path + "\\temp_images\geckodriver copy.exe"))
@@ -368,6 +379,7 @@ class MainWindow(QMainWindow):
             
             imgs = []
             forward_url = driver.find_element(By.CLASS_NAME, "nav.next").get_attribute("href")
+            print(forward_url)  
             
             for image in self.images:
                 image.deleteLater()
@@ -379,26 +391,27 @@ class MainWindow(QMainWindow):
                 img1.setPixmap(data)
                 self.images.append(img1)
                 self.widget.layout().addWidget(img1)
-                
+            
+            self.scrollArea.verticalScrollBar().setValue(0)
+
             self.preload_data = []
             self.thread = QThread()
-            self.worker = Worker(forward_url)
+            self.worker = Worker(forward_url, driver)
             self.worker.moveToThread(self.thread)
             
             self.thread.started.connect(self.worker.run)
-            self.worker.finished.connect(self.thread.quit)
-            self.worker.finished.connect(self.worker.deleteLater)
-            print("before thread deletes")
-            self.worker.finished.connect(self.thread.deleteLater)
-
+            self.worker.finished.connect(self.fixThread)
+            #self.worker.finished.connect(self.worker.deleteLater)
+            
+            #self.worker.finished.connect(self.thread.deleteLater)
             self.worker.progress.connect(self.update_preload)
             
             self.thread.start()
-            driver.get(forward_url)
         else:
             self.readingList.forward()
     
     def update_preload(self, pix):
+        print(f"uploaded image #{len(self.preload_data)}")
         self.preload_data.append(pix)
     
     def close_everything(self):
