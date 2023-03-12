@@ -9,7 +9,6 @@ VERSION 2:
 
 VERSION 3:
 - there is a reading guide
-- PRELOADING WORKS HELL YEAA
 
 Future Plans:
 - implement a continue from last session feature
