@@ -14,8 +14,8 @@ Future Plans:
 - make proper UI (have reader in the middle with controls as toggleable)
 
 
-KEYBOARD SHORTCUTS
-ALT + LEFT: PREV ISSUE
-ALT + RIGHT: NEXT ISSUE
-CTRL + D: SWITCH TO/FROM READING GUIDE
-CTRL + W: CLOSE APP
+KEYBOARD SHORTCUTS<br />
+ALT + LEFT: PREV ISSUE<br />
+ALT + RIGHT: NEXT ISSUE<br />
+CTRL + D: SWITCH TO/FROM READING GUIDE<br />
+CTRL + W: CLOSE APP<br />
