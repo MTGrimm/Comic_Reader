@@ -12,3 +12,10 @@ VERSION 3:
 Future Plans:
 - implement a continue from last session feature
 - make proper UI (have reader in the middle with controls as toggleable)
+
+
+KEYBOARD SHORTCUTS
+ALT + LEFT: PREV ISSUE
+ALT + RIGHT: NEXT ISSUE
+CTRL + D: SWITCH TO/FROM READING GUIDE
+CTRL + W: CLOSE APP
